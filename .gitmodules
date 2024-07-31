@@ -1,6 +1,7 @@
 [submodule "hermit"]
 	path = hermit
-	url = https://github.com/hermit-os/kernel
+	url = git@github.com:johnyob/hermit-kernel.git
+	branch = ajob410@feat/newlib-support-aarch64
 [submodule "binutils"]
 	path = binutils
 	url = git@github.com:jstz-dev/hermit-binutils.git
