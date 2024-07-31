@@ -56,7 +56,7 @@ export CFLAGS_FOR_TARGET="-O3 -fPIE -fpermissive"
 export CXXFLAGS_FOR_TARGET="-O3 -fPIE -fpermissive"
 
 case "$TARGET" in
-  x86_64-* | aarch64-*)
+  x86_64-*)
     export CFLAGS_FOR_TARGET+=" -m64"
     export CXXFLAGS_FOR_TARGET+=" -m64"        
     ;;
