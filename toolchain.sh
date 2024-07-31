@@ -1,68 +1,83 @@
 #!/bin/bash
-#
-# script to build HermitCore's toolchain
+
+# script to build Hermit's toolchain
 #
 # $1 = specifies the target architecture
-# $2 = specifies the installation directory
-
+ 
 # exit when any command fails
 set -e
 
-BUILDDIR=build
-CLONE_DEPTH="--depth=50"
-PREFIX="$2"
+SUPPORTED_TARGETS="x86_64-hermit aarch64-hermit riscv64-hermit"
 TARGET=$1
+if [ -z "$TARGET" ]; then
+  echo "Usage: $0 <target>"
+  exit 1
+fi
+
+if ! echo "$SUPPORTED_TARGETS" | grep -q "$TARGET"; then
+  echo "Unsupported target: $TARGET"
+  echo "Supported targets: $SUPPORTED_TARGETS"
+  exit 1
+fi
+
+ARCH=
+case "$TARGET" in
+  x86_64-*)
+    ARCH=x86_64
+    ;;
+  aarch64-*)
+    ARCH=aarch64
+    ;;
+  riscv64-*)
+    ARCH=riscv64
+    ;;
+  default)
+    echo "Unable to parse a supported architecture from $TARGET"
+    exit 1
+    ;;
+esac
+
 NJOBS=-j"$(nproc)"
+
+SCRIPTDIR="$(dirname "$0")"
+HERE="$(cd "$SCRIPTDIR" && pwd)"
+
+PREFIX="$HERE/prefix"
+BUILDDIR="$HERE/build"
 PATH=$PATH:$PREFIX/bin
+
 export CFLAGS="-w"
 export CXXFLAGS="-w"
-export CFLAGS_FOR_TARGET="-m64 -O3 -fPIE"
-export GOFLAGS_FOR_TARGET="-m64 -O3 -fPIE"
-export FCFLAGS_FOR_TARGET="-m64 -O3 -fPIE"
-export FFLAGS_FOR_TARGET="-m64 -O3 -fPIE"
-export CXXFLAGS_FOR_TARGET="-m64 -O3 -fPIE"
 
-echo "Build bootstrap toolchain for $TARGET with $NJOBS jobs for $PREFIX"
+# -O3 to enable optimizations
+# -fPIE to enable position-independent code
+# -fpermissive to downgrade the implicit declaration errors to warnings (occurs when compiling newlib with GCC 14)
+export CFLAGS_FOR_TARGET="-O3 -fPIE -fpermissive"
+export CXXFLAGS_FOR_TARGET="-O3 -fPIE -fpermissive"
 
-mkdir -p $BUILDDIR
-cd $BUILDDIR
+case "$TARGET" in
+  x86_64-* | aarch64-*)
+    export CFLAGS_FOR_TARGET+=" -m64"
+    export CXXFLAGS_FOR_TARGET+=" -m64"        
+    ;;
+esac
 
-if [ ! -d "binutils" ]; then
-git clone $CLONE_DEPTH https://github.com/hermit-os/binutils.git
-fi
+echo "Build Hermit toolchain (target: $TARGET, arch: $ARCH, jobs: $NJOBS, prefix: $PREFIX)."
 
-if [ ! -d "gcc" ]; then
-git clone $CLONE_DEPTH https://github.com/hermit-os/gcc.git
-wget ftp://gcc.gnu.org/pub/gcc/infrastructure/isl-0.15.tar.bz2 -O isl-0.15.tar.bz2
-tar jxf isl-0.15.tar.bz2
-mv isl-0.15 gcc/isl
-fi
+mkdir -p "$BUILDDIR"
 
-if [ ! -d "hermit" ]; then
-git clone --recursive -b master https://github.com/hermit-os/hermit-playground hermit
-pushd hermit/librs
-# See https://github.com/hermit-os/libhermit-rs/issues/597
-cargo update --package time --precise 0.3.11
-popd
-fi
+echo
+echo "*********************"
+echo "* Building binutils *"
+echo "*********************"
+echo
 
-if [ ! -d "newlib" ]; then
-git clone $CLONE_DEPTH -b path2rs https://github.com/hermit-os/newlib.git
-fi
-
-if [ ! -d "pte" ]; then
-git clone $CLONE_DEPTH -b path2rs https://github.com/hermit-os/pthread-embedded.git pte
-cd pte
-./configure --target=$TARGET --prefix=$PREFIX
-cd -
-fi
-
-if [ ! -d "tmp/binutils" ]; then
-mkdir -p tmp/binutils
-cd tmp/binutils
-../../binutils/configure \
-    --target=$TARGET \
-    --prefix=$PREFIX \
+if [ ! -d "$BUILDDIR/binutils" ]; then
+mkdir -p "$BUILDDIR/binutils"
+pushd "$BUILDDIR/binutils"
+"$HERE/binutils/configure" \
+    --target="$TARGET" \
+    --prefix="$PREFIX" \
     --with-sysroot \
     --disable-werror \
     --disable-multilib \
@@ -75,17 +90,23 @@ cd tmp/binutils
     --enable-tls \
     --enable-lto \
     --enable-plugin
-make -O $NJOBS
+make "$NJOBS" -O
 make install
-cd -
+popd
 fi
 
-if [ ! -d "tmp/bootstrap" ]; then
-mkdir -p tmp/bootstrap
-cd tmp/bootstrap
-../../gcc/configure \
-    --target=$TARGET \
-    --prefix=$PREFIX \
+echo
+echo "************************"
+echo "* Building stage 1 GCC *"
+echo "************************"
+echo
+
+if [ ! -d "$BUILDDIR/gcc-1" ]; then
+mkdir -p "$BUILDDIR/gcc-1"
+pushd "$BUILDDIR/gcc-1"
+"$HERE/gcc/configure" \
+    --target="$TARGET" \
+    --prefix="$PREFIX" \
     --without-headers \
     --disable-multilib \
     --with-isl \
@@ -98,54 +119,85 @@ cd tmp/bootstrap
     --enable-tls \
     --enable-lto \
     --disable-symvers
-make -O $NJOBS all-gcc
+make "$NJOBS" -O all-gcc
 make install-gcc
-cd -
+popd
 fi
 
-if [ ! -d "tmp/hermit" ]; then
-mkdir -p tmp/hermit
-cd tmp/hermit
-cmake ../../hermit/ \
-    -DTOOLCHAIN_BIN_DIR=$PREFIX/bin \
-    -DCMAKE_INSTALL_PREFIX=$PREFIX \
-    -DBOOTSTRAP=true 
-make hermit
-make hermit_rs-install
-cd -
-fi
+echo
+echo "**************************"
+echo "* Building Hermit kernel *"
+echo "**************************"
+echo
 
-if [ ! -d "tmp/newlib" ]; then
-mkdir -p tmp/newlib
-cd tmp/newlib
-../../newlib/configure \
-    --target=$TARGET \
-    --prefix=$PREFIX \
+mkdir -p "$BUILDDIR/hermit"
+
+pushd "$HERE/hermit"
+cargo run --package=xtask build --arch "$ARCH" --release --no-default-features --features pci,smp,acpi,newlib,tcp,dhcpv4 --target-dir "$BUILDDIR/hermit"
+popd 
+
+mkdir -p "$PREFIX/$TARGET/lib"
+cp "$BUILDDIR/hermit/$ARCH/release/libhermit.a" "$PREFIX/$TARGET/lib/libhermit.a"
+
+echo
+echo "*****************************"
+echo "* Building Newlib C library *"
+echo "*****************************"
+echo
+
+if [ ! -d "$BUILDDIR/newlib" ]; then
+mkdir -p "$BUILDDIR/newlib"
+pushd "$BUILDDIR/newlib"
+"$HERE/newlib/configure" \
+    --target="$TARGET" \
+    --prefix="$PREFIX" \
     --disable-shared \
     --disable-multilib \
     --enable-lto \
     --enable-newlib-io-c99-formats \
     --enable-newlib-multithread
-make -O $NJOBS
+make -O "$NJOBS"
 make install
-cd -
+# Newlib overwrites crt0.o with the one from libgloss, 
+# so we need to restore it manually
+mv -f "$BUILDDIR/newlib/$TARGET/newlib/crt0.o" "$PREFIX/$TARGET/lib/crt0.o"
+popd
 fi
 
-cd pte
-make && make install
-cd ..
+echo
+echo "***************************************"
+echo "* Building pthread-embedded C library *"
+echo "***************************************"
+echo
 
-if [ ! -d "tmp/gcc" ]; then
-mkdir -p tmp/gcc
-cd tmp/gcc
-../../gcc/configure \
-    --target=$TARGET \
-    --prefix=$PREFIX \
+if [ ! -d "$BUILDDIR/pte" ]; then
+cp -r "$HERE/pte" "$BUILDDIR"
+pushd "$BUILDDIR/pte"
+"$BUILDDIR/pte/configure" \
+    --target="$TARGET" \
+    --prefix="$PREFIX"
+make -O "$NJOBS"
+make install
+popd
+fi
+
+echo
+echo "************************"
+echo "* Building stage 2 GCC *"
+echo "************************"
+echo
+
+if [ ! -d "$BUILDDIR/gcc-2" ]; then
+mkdir -p "$BUILDDIR/gcc-2"
+pushd "$BUILDDIR/gcc-2"
+"$HERE/gcc/configure" \
+    --target="$TARGET" \
+    --prefix="$PREFIX" \
     --with-newlib \
     --with-isl \
     --disable-multilib \
     --without-libatomic \
-    --enable-languages=c,c++,fortran,lto \
+    --enable-languages=c,c++,lto \
     --disable-nls \
     --disable-shared \
     --enable-libssp \
@@ -154,22 +206,7 @@ cd tmp/gcc
     --enable-tls \
     --enable-lto \
     --disable-symver
-make -O $NJOBS
+make -O "$NJOBS"
 make install
-cd -
+popd
 fi
-
-if [ ! -d "tmp/final" ]; then
-mkdir -p tmp/final
-cd tmp/final
-cmake ../../hermit \
-    -DTOOLCHAIN_BIN_DIR=$PREFIX/bin \
-    -DCMAKE_INSTALL_PREFIX=$PREFIX \
-    -DMTUNE=native \
-    -DCMAKE_BUILD_TYPE=Release
-make
-make install
-cd -
-fi
-
-cd ..

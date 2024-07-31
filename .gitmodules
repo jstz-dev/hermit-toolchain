@@ -1,0 +1,19 @@
+[submodule "hermit"]
+	path = hermit
+	url = https://github.com/hermit-os/kernel
+[submodule "binutils"]
+	path = binutils
+	url = git@github.com:jstz-dev/hermit-binutils.git
+	branch = binutils-2_42
+[submodule "gcc"]
+	path = gcc
+	url = git@github.com:jstz-dev/hermit-gcc.git
+	branch = releases/gcc-14
+[submodule "newlib"]
+	path = newlib
+	url = git@github.com:jstz-dev/hermit-newlib.git
+	branch = releases/newlib-4.3.0
+[submodule "pte"]
+	path = pte
+	url = git@github.com:hermit-os/pthread-embedded.git
+	branch = path2rs

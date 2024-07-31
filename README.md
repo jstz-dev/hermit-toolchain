@@ -1,30 +1,43 @@
 # hermit-toolchain
 
-This repository contains scripts to build the cross-compiler for the Rust-based library OS [HermitCore](https://github.com/hermit-os/libhermit-rs).
+This repository contains scripts to build a GCC cross-compiler targetting the Rust-based unikernel [Hermit OS](https://github.com/hermit-os/kernel).
 
 ## Requirements
 
-The build process works currently only on **x86-based Linux** systems. The following software packets are required to build HermitCore's toolchain on a Linux system:
+> [!WARNING]
+> The build process has only been tested on **Linux** systems (using GCC). 
+> To make the build process more portable, we recommend to use
+> the Docker image defined [here](./Dockerfile).
 
-* Netwide Assembler (NASM)
-* GNU Make, GNU Binutils, cmake
-* Tools and libraries to build *linux*, *binutils* and *gcc* (e.g. flex, bison, MPFR library, GMP library, MPC library)
-* Rust
 
-On Debian-based systems the packets can be installed by executing:
+The following system dependencies are required to build Hermit's toolchain on Linux:
+* GNU Make, GNU Binutils, GCC
+* Tools and libraries to build *binutils* and *GCC* (e.g. flex, bison, texinfo, MPFR library, GMP library, MPC library, ISL library)
+* Rustup (Rust toolchain manager)
+
+On Debian-based systems the packages can be installed by executing:
 ```
-  sudo apt-get install cmake nasm libmpfr-dev libmpc-dev libgmp-dev flex bison
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+sudo apt-get install libmpfr-dev libmpc-dev libgmp-dev libisl-dev flex bison texinfo
 ```
 
-Note: If issues arise during the build, try using requirements.sh to check the versions of the necessary packets and the configuration of the LD_LIBRARY_PATH (it should contain the MPFR library, GMP library and MPC library).
-
-## Building the HermitCore's toolchain
+## Building the Hermit's toolchain
 
 To build the toolchain just call the script as follow:
 
 ```bash
-$ ./toolchain.sh x86_64-hermit /home/usr/hermit
+./toolchain.sh x86_64-hermit
 ```
 
-The first argument of the script specifies the target architecture, where the second argument defines the path to the installation directory.
-To create the toolchain, write access to the installation directory is required.
+The first argument of the script specifies the target architecture.  The supported architectures are:
+* x86_64-hermit
+* aarch64-hermit
+* riscv64-hermit
+
+To create the toolchain, write access to the current directory is required. The installation (sysroot) is located in the subdirectory `prefix`.
+
+Alternatively, you can use Docker to build the toolchain. The following command will build the toolchain for the riscv64 target:
+
+```bash
+docker build . --build-arg TARGET=riscv64-hermit -t hermit-toolchain
+```

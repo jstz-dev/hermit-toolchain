@@ -1,38 +1,34 @@
-FROM rust:buster as builder
+FROM rust:buster as builder-env
 
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends \
-        # gcc Build-Depends:
-        bison \
-        git \
-        flex \
-        libgmp-dev \
-        libmpc-dev \
-        libmpfr-dev \
-        texinfo \
-        # libhermit-rs Build-Depends:
-        cmake \
-        nasm \
-    ; \
-    rm -rf /var/lib/apt/lists/*;
-
+RUN set -eux
+RUN apt-get update
+# gcc nativeBuildInputs
+RUN apt-get install -y --no-install-recommends \
+    bison \
+    flex \
+    libgmp-dev \
+    libmpc-dev \
+    libmpfr-dev \
+    libisl-dev \
+    texinfo
+RUN rm -rf /var/lib/apt/lists/*
 WORKDIR /root/
+ADD ./binutils/ /root/binutils/
+ADD ./hermit/ /root/hermit/
+ADD ./gcc/ /root/gcc/
+ADD ./newlib/ /root/newlib/
+ADD ./pte/ /root/pte/
 ADD ./toolchain.sh /root/toolchain.sh
-RUN ./toolchain.sh x86_64-hermit /opt/hermit
 
+FROM builder-env as builder
+
+RUN set -eux
+ARG TARGET=x86_64-hermit
+RUN ./toolchain.sh $TARGET
 
 FROM rust:buster as toolchain
 
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends \
-        # libhermit-rs Build-Depends:
-        cmake \
-        nasm \
-    ; \
-    rm -rf /var/lib/apt/lists/*;
-
-COPY --from=builder /opt/hermit /opt/hermit
-ENV PATH=/opt/hermit/bin:$PATH \
-    LD_LIBRARY_PATH=/opt/hermit/lib:$LD_LIBRARY_PATH
+RUN set -eux
+COPY --from=builder /root/prefix /root/prefix
+ENV PATH=/root/prefix/bin:$PATH \
+    LD_LIBRARY_PATH=/root/prefix/lib:$LD_LIBRARY_PATH
