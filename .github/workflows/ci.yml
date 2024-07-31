@@ -21,6 +21,8 @@ jobs:
       matrix:
         include:
           - image: riscv64
+          - image: x86_64
+          - image: aarch64
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
