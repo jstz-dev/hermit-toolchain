@@ -50,10 +50,11 @@ export CFLAGS="-w"
 export CXXFLAGS="-w"
 
 # -O3 to enable optimizations
-# -fPIE to enable position-independent code
+# -fPIC to enable position-independent code
 # -fpermissive to downgrade the implicit declaration errors to warnings (occurs when compiling newlib with GCC 14)
-export CFLAGS_FOR_TARGET="-O3 -fPIE -fpermissive"
-export CXXFLAGS_FOR_TARGET="-O3 -fPIE -fpermissive"
+# -ggdb to enable debugging information
+export CFLAGS_FOR_TARGET="-ggdb -O3 -fPIC -fpermissive"
+export CXXFLAGS_FOR_TARGET="-ggdb -O3 -fPIC -fpermissive"
 
 case "$TARGET" in
   x86_64-*)
@@ -81,11 +82,7 @@ pushd "$BUILDDIR/binutils"
     --with-sysroot \
     --disable-werror \
     --disable-multilib \
-    --disable-shared \
     --disable-nls \
-    --disable-gdb \
-    --disable-libdecnumber \
-    --disable-readline \
     --disable-sim \
     --enable-tls \
     --enable-lto \
@@ -112,7 +109,6 @@ pushd "$BUILDDIR/gcc-1"
     --with-isl \
     --enable-languages=c,c++,lto \
     --disable-nls \
-    --disable-shared \
     --disable-libssp \
     --disable-libgomp \
     --enable-threads=posix \
@@ -133,11 +129,11 @@ echo
 mkdir -p "$BUILDDIR/hermit"
 
 pushd "$HERE/hermit"
-cargo run --package=xtask build --arch "$ARCH" --release --no-default-features --features pci,smp,acpi,newlib,tcp,dhcpv4 --target-dir "$BUILDDIR/hermit"
+HERMIT_LOG_LEVEL_FILTER=Debug cargo run --package=xtask build --arch "$ARCH" --no-default-features --features pci,smp,acpi,newlib,tcp,dhcpv4 --target-dir "$BUILDDIR/hermit"
 popd 
 
 mkdir -p "$PREFIX/$TARGET/lib"
-cp "$BUILDDIR/hermit/$ARCH/release/libhermit.a" "$PREFIX/$TARGET/lib/libhermit.a"
+cp "$BUILDDIR/hermit/$ARCH/debug/libhermit.a" "$PREFIX/$TARGET/lib/libhermit.a"
 
 echo
 echo "*****************************"
@@ -151,7 +147,6 @@ pushd "$BUILDDIR/newlib"
 "$HERE/newlib/configure" \
     --target="$TARGET" \
     --prefix="$PREFIX" \
-    --disable-shared \
     --disable-multilib \
     --enable-lto \
     --enable-newlib-io-c99-formats \
@@ -199,7 +194,6 @@ pushd "$BUILDDIR/gcc-2"
     --without-libatomic \
     --enable-languages=c,c++,lto \
     --disable-nls \
-    --disable-shared \
     --enable-libssp \
     --enable-threads=posix \
     --enable-libgomp \

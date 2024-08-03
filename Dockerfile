@@ -31,4 +31,4 @@ FROM rust:buster as toolchain
 RUN set -eux
 COPY --from=builder /root/prefix /root/prefix
 ENV PATH=/root/prefix/bin:$PATH \
-    LD_LIBRARY_PATH=/root/prefix/lib:$LD_LIBRARY_PATH
+    LD_LIBRARY_PATH=/root/prefix/riscv64-hermit/lib:/root/prefix/lib:$LD_LIBRARY_PATH
